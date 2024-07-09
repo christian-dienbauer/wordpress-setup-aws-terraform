@@ -7,7 +7,7 @@ variable "tag" {
 }
 
 variable "image_id" {
-  default     = "ami-0e872aee57663ae2d"
+  default     = "ami-0e872aee57663ae2d" # Change accordingly 
   description = "The id of the machine image (AMI) to use for the server."
 }
 

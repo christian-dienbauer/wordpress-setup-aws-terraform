@@ -130,15 +130,18 @@ resource "aws_launch_template" "wordpress-cd" {
   name_prefix   = "wordpress-cd-"
   image_id      = var.image_id
   instance_type = var.instance_type
-  key_name      = awscc_ec2_key_pair.cdpubkey.key_name
+  key_name      = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ssm_profile.name
+  }
 
   user_data = base64encode(<<-EOF
               #!/bin/bash
               apt update -y
-              apt install -y apache2
-              systemctl start apache2
-              systemctl enable apache2
-              echo "<h1>Hello, World from $(hostname -f)</h1>" > /var/www/html/index.html
+              apt install -y amazon-ssm-agent
+              systemctl start amazon-ssm-agent
+              systemctl enable amazon-ssm-agent
               EOF
   )
 
@@ -222,4 +225,71 @@ resource "aws_autoscaling_attachment" "asg_attachment" {
 }
 
 
+# Wordpress installation
 
+resource "aws_ssm_document" "install_apache" {
+  name          = "InstallApache"
+  document_type = "Command"
+
+  content = <<-DOC
+  {
+    "schemaVersion": "2.2",
+    "description": "Install Apache",
+    "mainSteps": [
+      {
+        "action": "aws:runShellScript",
+        "name": "installApache",
+        "inputs": {
+          "runCommand": [
+            "apt update -y",
+            "apt install -y apache2",
+            "systemctl start apache2",
+            "systemctl enable apache2"
+          ]
+        }
+      }
+    ]
+  }
+  DOC
+}
+
+
+
+resource "aws_iam_role" "ssm_role" {
+  name = "ssm_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_policy_attach" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "ssm_profile"
+  role = aws_iam_role.ssm_role.name
+}
+
+
+resource "aws_ssm_association" "apache_install" {
+  name = aws_ssm_document.install_apache.name
+  targets {
+    key    = "tag:Name"
+    values = ["web-instance"]
+  }
+  wait_for_success_timeout_seconds = 3600 # Adjust accordingly 
+  association_name                 = "InstallApacheOnLaunch"
+  compliance_severity              = "HIGH"
+}
