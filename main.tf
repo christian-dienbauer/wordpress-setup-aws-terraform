@@ -11,6 +11,7 @@ provider "aws" {
   region = var.region
 }
 
+# Setup VPC and subnets
 
 resource "aws_vpc" "wordpress-cd" {
   cidr_block       = "10.0.0.0/16"
@@ -120,6 +121,8 @@ resource "aws_security_group" "allow_http" {
   }
 }
 
+# Setup ec2 instance behind a load balancer
+
 # REMOVE - Development only. 
 resource "awscc_ec2_key_pair" "cdpubkey" {
   key_name            = "cdpubkey"
@@ -144,7 +147,6 @@ resource "aws_launch_template" "wordpress-cd" {
               systemctl enable amazon-ssm-agent
               EOF
   )
-
   network_interfaces {
     associate_public_ip_address = true
     security_groups             = [aws_security_group.allow_http.id]
@@ -287,9 +289,8 @@ resource "aws_ssm_association" "apache_install" {
   name = aws_ssm_document.install_apache.name
   targets {
     key    = "tag:Name"
-    values = ["web-instance"]
+    values = ["wordpress-cd-instance"]
   }
-  wait_for_success_timeout_seconds = 3600 # Adjust accordingly 
-  association_name                 = "InstallApacheOnLaunch"
-  compliance_severity              = "HIGH"
+  association_name    = "InstallApacheOnLaunch"
+  compliance_severity = "HIGH"
 }
