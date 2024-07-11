@@ -121,12 +121,113 @@ resource "aws_security_group" "allow_http" {
   }
 }
 
+# Create an RDS instance
+
+resource "aws_security_group" "rds_sg" {
+  vpc_id = aws_vpc.wordpress-cd.id
+
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "rds-security-group"
+  }
+}
+
+resource "aws_db_instance" "main" {
+  allocated_storage = 20
+  engine            = "mysql"
+  engine_version    = "8.0"
+  instance_class    = "db.t3.micro"
+  # db_name                = "mydb"
+  username               = var.db_admin
+  password               = var.db_admin_pw # Consider using AWS Secrets Manager instead
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  skip_final_snapshot    = true
+
+  tags = {
+    Name = "main-rds"
+  }
+}
+
+resource "aws_db_subnet_group" "main" {
+  name       = "main-subnet-group"
+  subnet_ids = [aws_subnet.wordpress-cd-a.id, aws_subnet.wordpress-cd-b.id, aws_subnet.wordpress-cd-c.id]
+
+  tags = {
+    Name = "main-subnet-group"
+  }
+}
+
+# Create database and user for wordpress
+
+resource "aws_security_group" "db_setup" { # Remove me
+  vpc_id = aws_vpc.wordpress-cd.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "rds-security-group"
+  }
+}
+
+resource "aws_instance" "web" {
+  ami                    = var.image_id
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.wordpress-cd-c.id
+  key_name               = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
+  vpc_security_group_ids = [aws_security_group.db_setup.id]
+  # security_groups = [aws_security_group.db_setup.name]
+  # associate_public_ip_address = true
+
+  user_data = templatefile("database_setup.tftpl",
+    {
+      rds_address       = aws_db_instance.main.address,
+      admin             = var.db_admin,
+      admin_pw          = var.db_admin_pw,
+      wordpress_db      = var.db_wordpress,
+      wordpress_user    = var.db_wordpress_user,
+      wordpress_user_pw = var.db_wordpress_user_pw
+    }
+  )
+
+
+  tags = {
+    Name = "WordPress-Database-setup"
+  }
+}
+
 # Setup ec2 instance behind a load balancer
 
 # REMOVE - Development only. 
 resource "awscc_ec2_key_pair" "cdpubkey" {
-  key_name            = "cdpubkey"
-  public_key_material = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEWmpFpShRS7aaowUeOsh6TxqEGAqyQpotBc339lm2Va christian.dienbauer@dreamcodefactory.com"
+  key_name            = "christian.dienbauer@dreamcodefactory.com"
+  key_type            = "ed25519"
+  public_key_material = file("~/.ssh/id_ed25519.pub")
 }
 
 resource "aws_launch_template" "wordpress-cd" {

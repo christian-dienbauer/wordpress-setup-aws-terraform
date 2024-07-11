@@ -14,3 +14,25 @@ variable "image_id" {
 variable "instance_type" {
   default = "t2.micro"
 }
+
+# Database
+variable "db_admin" {
+  default = "admin"
+}
+
+variable "db_admin_pw" {
+  default = "password" # Change this
+}
+
+variable "db_wordpress" {
+  default = "wordpress"
+}
+
+variable "db_wordpress_user" {
+  default = "wordpress"
+}
+
+variable "db_wordpress_user_pw" {
+  default = "password" # Change this
+}
+

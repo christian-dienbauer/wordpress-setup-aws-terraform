@@ -1,0 +1,42 @@
+#!/bin/bash
+mkdir /home/ubuntu/checkpoint1
+RDS_ADDRESS="${rds_address}"
+ADMIN_USER="${admin}"
+ADMIN_PW="${admin_pw}"
+
+DB_NAME="${wordpress_db}"
+WORDPRESS_USER="${wordpress_user}"
+WORDPRESS_USER_PW="${wordpress_user_pw}"
+
+cat <<EOF > /home/ubuntu/db_config.txt
+RDS_ADDRESS="${rds_address}"
+ADMIN_USER="${admin}"
+ADMIN_PW="${admin_pw}"
+DB_NAME="${wordpress_db}"
+WORDPRESS_USER="${wordpress_user}"
+WORDPRESS_USER_PW="${wordpress_user_pw}"
+EOF
+
+mkdir /home/ubuntu/checkpoint1.5
+apt update -y
+apt install -y mysql-server
+
+mkdir /home/ubuntu/checkpoint2
+Wait for the RDS instance to be available
+until mysqladmin ping -s -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW; do
+    echo 'waiting for mysql to be connectable...'
+    sleep 5
+done
+
+
+mkdir /home/ubuntu/checkpoint3
+# Create the database
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "CREATE DATABASE $DB_NAME;"
+mkdir /home/ubuntu/checkpoint4
+# Create user
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "CREATE USER $WORDPRESS_USER IDENTIFIED BY '$WORDPRESS_USER_PW';"
+mkdir /home/ubuntu/checkpoint5
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,ALTER ON wordpress.* TO $WORDPRESS_USER;"
+mkdir /home/ubuntu/checkpoint6
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "FLUSH PRIVILEGES;"
+mkdir /home/ubuntu/checkpointfinal

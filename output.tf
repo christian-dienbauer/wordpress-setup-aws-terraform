@@ -5,3 +5,7 @@ output "vpc_id" {
 output "load_balancer_dns" {
   value = aws_lb.wordpress-cd.dns_name
 }
+
+output "rds_endpoint" {
+  value = aws_db_instance.main.endpoint
+}
