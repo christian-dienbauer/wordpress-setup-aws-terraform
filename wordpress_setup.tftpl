@@ -1,0 +1,100 @@
+#!/bin/bash
+RDS_ADDRESS="${rds_address}"
+ADMIN_USER="${admin}"
+ADMIN_PW="${admin_pw}"
+
+DB_NAME="${wordpress_db}"
+WORDPRESS_USER="${wordpress_user}"
+WORDPRESS_USER_PW="${wordpress_user_pw}"
+
+apt update -y
+apt install -y apache2 \
+                 ghostscript \
+                 libapache2-mod-php \
+                 mysql-server \
+                 php \
+                 php-bcmath \
+                 php-curl \
+                 php-imagick \
+                 php-intl \
+                 php-json \
+                 php-mbstring \
+                 php-mysql \
+                 php-xml \
+                 php-zip
+
+# INSTALL WORDPRESS
+mkdir -p /srv/www
+chown www-data: /srv/www
+curl https://wordpress.org/latest.tar.gz | sudo -u www-data tar zx -C /srv/www
+
+# CONFIGURE APACHE FOR WORDPRESS
+APACHE_CONFIG_CONTENT='<VirtualHost *:80>
+    DocumentRoot /srv/www/wordpress
+    <Directory /srv/www/wordpress>
+        Options FollowSymLinks
+        AllowOverride Limit Options FileInfo
+        DirectoryIndex index.php
+        Require all granted
+    </Directory>
+    <Directory /srv/www/wordpress/wp-content>
+        Options FollowSymLinks
+        Require all granted
+    </Directory>
+</VirtualHost>'
+
+# Create the Apache configuration file
+# echo "$APACHE_CONFIG_CONTENT" | sudo tee /etc/apache2/sites-available/wordpress.conf > /dev/null
+echo "$APACHE_CONFIG_CONTENT" > /etc/apache2/sites-available/wordpress.conf
+
+# Enable the WordPress site
+a2ensite wordpress.conf
+
+# Disable the default site (optional, if you want to disable it)
+a2dissite 000-default.conf
+
+# Reload Apache to apply the changes
+systemctl reload apache2
+
+echo "Apache configuration for WordPress has been set up successfully."
+
+# CREATE DATABASE AND USER FOR WORDPRESS
+echo "Waiting for MySQL to be available at $RDS_ADDRESS..."
+
+until mysql -h "$RDS_ADDRESS" -u "$ADMIN_USER" -p"$ADMIN_PW" -e "SELECT 1;" &> /dev/null; do
+  echo "MySQL is unavailable - sleeping"
+  sleep 5
+done
+
+echo "MySQL is up - executing commands"
+
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "CREATE DATABASE $DB_NAME;" 2> /dev/null
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "CREATE USER $WORDPRESS_USER IDENTIFIED BY '$WORDPRESS_USER_PW';" 2> /dev/null
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,ALTER ON wordpress.* TO $WORDPRESS_USER;"
+mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "FLUSH PRIVILEGES;"
+
+# CONFIGURE WORDPRESS TO CONNECT TO THE DATABASE
+# Copy the WordPress configuration file as www-data
+sudo -u www-data cp /srv/www/wordpress/wp-config-sample.php /srv/www/wordpress/wp-config.php
+
+# Set the database credentials
+sudo -u www-data sed -i "s/database_name_here/$DB_NAME/" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "s/username_here/$WORDPRESS_USER/" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "s/password_here/$WORDPRESS_USER_PW/" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "s/localhost/$RDS_ADDRESS/" /srv/www/wordpress/wp-config.php
+
+# Fetch the unique keys and salts
+UNIQUE_KEYS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+
+# Insert the unique keys and salts into the wp-config.php file
+sudo -u www-data sed -i "/AUTH_KEY/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/SECURE_AUTH_KEY/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/LOGGED_IN_KEY/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/NONCE_KEY/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/AUTH_SALT/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/SECURE_AUTH_SALT/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/LOGGED_IN_SALT/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/NONCE_SALT/d" /srv/www/wordpress/wp-config.php
+
+echo "$UNIQUE_KEYS" | sudo -u www-data tee -a /srv/www/wordpress/wp-config.php > /dev/null
+

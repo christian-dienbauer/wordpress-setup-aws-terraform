@@ -173,12 +173,19 @@ resource "aws_db_subnet_group" "main" {
 
 # Create database and user for wordpress
 
-resource "aws_security_group" "db_setup" { # Remove me
+resource "aws_security_group" "wordpress_setup" { # Remove me
   vpc_id = aws_vpc.wordpress-cd.id
 
   ingress {
     from_port   = 22
     to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -195,14 +202,14 @@ resource "aws_security_group" "db_setup" { # Remove me
   }
 }
 
-resource "aws_instance" "db_setup" { # TODO: terminate after database setup
+resource "aws_instance" "wordpress_setup" { # TODO: terminate after database setup
   ami                    = var.image_id
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.wordpress-cd-c.id
   key_name               = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
-  vpc_security_group_ids = [aws_security_group.db_setup.id]
+  vpc_security_group_ids = [aws_security_group.wordpress_setup.id]
 
-  user_data = templatefile("database_setup.tftpl",
+  user_data = templatefile("wordpress_setup.tftpl",
     {
       rds_address       = aws_db_instance.main.address,
       admin             = var.db_admin,
@@ -215,7 +222,7 @@ resource "aws_instance" "db_setup" { # TODO: terminate after database setup
 
 
   tags = {
-    Name = "WordPress-Database-setup"
+    Name = "WordPress-setup"
   }
 }
 
