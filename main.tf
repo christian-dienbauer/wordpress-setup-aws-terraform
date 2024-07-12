@@ -195,14 +195,12 @@ resource "aws_security_group" "db_setup" { # Remove me
   }
 }
 
-resource "aws_instance" "web" {
+resource "aws_instance" "db_setup" { # TODO: terminate after database setup
   ami                    = var.image_id
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.wordpress-cd-c.id
   key_name               = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
   vpc_security_group_ids = [aws_security_group.db_setup.id]
-  # security_groups = [aws_security_group.db_setup.name]
-  # associate_public_ip_address = true
 
   user_data = templatefile("database_setup.tftpl",
     {
@@ -220,6 +218,7 @@ resource "aws_instance" "web" {
     Name = "WordPress-Database-setup"
   }
 }
+
 
 # Setup ec2 instance behind a load balancer
 
