@@ -103,6 +103,13 @@ resource "aws_security_group" "allow_http" {
   }
 
   ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -146,11 +153,10 @@ resource "aws_security_group" "rds_sg" {
 }
 
 resource "aws_db_instance" "main" {
-  allocated_storage = 20
-  engine            = "mysql"
-  engine_version    = "8.0"
-  instance_class    = "db.t3.micro"
-  # db_name                = "mydb"
+  allocated_storage      = 20
+  engine                 = "mysql"
+  engine_version         = "8.0"
+  instance_class         = "db.t3.micro"
   username               = var.db_admin
   password               = var.db_admin_pw # Consider using AWS Secrets Manager instead
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -226,10 +232,25 @@ resource "aws_instance" "wordpress_setup" { # TODO: terminate after database set
   }
 }
 
+resource "null_resource" "wordpress_ami_delay" {
+  provisioner "local-exec" {
+    command = "sleep 60"
+  }
+
+  depends_on = [aws_instance.wordpress_setup]
+}
+
+resource "aws_ami_from_instance" "wordpress_ami" {
+  name               = "wordpress-cd"
+  source_instance_id = aws_instance.wordpress_setup.id
+  depends_on = [
+    null_resource.wordpress_ami_delay
+  ]
+}
 
 # Setup ec2 instance behind a load balancer
 
-# REMOVE - Development only. 
+# # REMOVE - Development only. 
 resource "awscc_ec2_key_pair" "cdpubkey" {
   key_name            = "christian.dienbauer@dreamcodefactory.com"
   key_type            = "ed25519"
@@ -238,22 +259,10 @@ resource "awscc_ec2_key_pair" "cdpubkey" {
 
 resource "aws_launch_template" "wordpress-cd" {
   name_prefix   = "wordpress-cd-"
-  image_id      = var.image_id
+  image_id      = aws_ami_from_instance.wordpress_ami.id
   instance_type = var.instance_type
   key_name      = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
 
-  iam_instance_profile {
-    name = aws_iam_instance_profile.ssm_profile.name
-  }
-
-  user_data = base64encode(<<-EOF
-              #!/bin/bash
-              apt update -y
-              apt install -y amazon-ssm-agent
-              systemctl start amazon-ssm-agent
-              systemctl enable amazon-ssm-agent
-              EOF
-  )
   network_interfaces {
     associate_public_ip_address = true
     security_groups             = [aws_security_group.allow_http.id]
@@ -276,7 +285,7 @@ resource "aws_autoscaling_group" "wordpress-cd" {
 
   tag {
     key                 = "Name"
-    value               = "wordpress-cd-instance"
+    value               = "wordpress-cd"
     propagate_at_launch = true
   }
 }
@@ -317,6 +326,20 @@ resource "aws_lb_target_group" "wordpress-cd" {
   }
 }
 
+# Define a listener for HTTPS
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.wordpress-cd.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = "arn:aws:acm:eu-central-1:058264264767:certificate/c5fc59b8-560c-46cf-9aa6-49ab3607f51f"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.wordpress-cd.arn
+  }
+}
+
 resource "aws_lb_listener" "wordpress-cd" {
   load_balancer_arn = aws_lb.wordpress-cd.arn
   port              = "80"
@@ -331,73 +354,4 @@ resource "aws_lb_listener" "wordpress-cd" {
 resource "aws_autoscaling_attachment" "asg_attachment" {
   autoscaling_group_name = aws_autoscaling_group.wordpress-cd.name
   lb_target_group_arn    = aws_lb_target_group.wordpress-cd.arn
-}
-
-
-# Wordpress installation
-
-resource "aws_ssm_document" "install_apache" {
-  name          = "InstallApache"
-  document_type = "Command"
-
-  content = <<-DOC
-  {
-    "schemaVersion": "2.2",
-    "description": "Install Apache",
-    "mainSteps": [
-      {
-        "action": "aws:runShellScript",
-        "name": "installApache",
-        "inputs": {
-          "runCommand": [
-            "apt update -y",
-            "apt install -y apache2",
-            "systemctl start apache2",
-            "systemctl enable apache2"
-          ]
-        }
-      }
-    ]
-  }
-  DOC
-}
-
-
-
-resource "aws_iam_role" "ssm_role" {
-  name = "ssm_role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ssm_policy_attach" {
-  role       = aws_iam_role.ssm_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "ssm_profile" {
-  name = "ssm_profile"
-  role = aws_iam_role.ssm_role.name
-}
-
-
-resource "aws_ssm_association" "apache_install" {
-  name = aws_ssm_document.install_apache.name
-  targets {
-    key    = "tag:Name"
-    values = ["wordpress-cd-instance"]
-  }
-  association_name    = "InstallApacheOnLaunch"
-  compliance_severity = "HIGH"
 }
