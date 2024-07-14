@@ -17,6 +17,9 @@ resource "aws_vpc" "wordpress-cd" {
   cidr_block       = "10.0.0.0/16"
   instance_tenancy = "default"
 
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
   tags = {
     Name = var.tag
   }
@@ -152,23 +155,25 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-resource "aws_db_instance" "main" {
+resource "aws_db_instance" "wordpress-cd" {
   allocated_storage      = 20
   engine                 = "mysql"
   engine_version         = "8.0"
   instance_class         = "db.t3.micro"
   username               = var.db_admin
   password               = var.db_admin_pw # Consider using AWS Secrets Manager instead
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  db_subnet_group_name   = aws_db_subnet_group.wordpress-cd.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
+
+  publicly_accessible = true
 
   tags = {
     Name = "main-rds"
   }
 }
 
-resource "aws_db_subnet_group" "main" {
+resource "aws_db_subnet_group" "wordpress-cd" {
   name       = "main-subnet-group"
   subnet_ids = [aws_subnet.wordpress-cd-a.id, aws_subnet.wordpress-cd-b.id, aws_subnet.wordpress-cd-c.id]
 
@@ -217,7 +222,7 @@ resource "aws_instance" "wordpress_setup" { # TODO: terminate after database set
 
   user_data = templatefile("wordpress_setup.tftpl",
     {
-      rds_address       = aws_db_instance.main.address,
+      rds_address       = aws_db_instance.wordpress-cd.address,
       admin             = var.db_admin,
       admin_pw          = var.db_admin_pw,
       wordpress_db      = var.db_wordpress,
@@ -340,18 +345,10 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-resource "aws_lb_listener" "wordpress-cd" {
-  load_balancer_arn = aws_lb.wordpress-cd.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.wordpress-cd.arn
-  }
-}
 
 resource "aws_autoscaling_attachment" "asg_attachment" {
   autoscaling_group_name = aws_autoscaling_group.wordpress-cd.name
   lb_target_group_arn    = aws_lb_target_group.wordpress-cd.arn
 }
+
+# TODO: change wordpress-cd to wordpress_cd

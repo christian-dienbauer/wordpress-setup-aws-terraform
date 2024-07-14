@@ -6,6 +6,7 @@ ADMIN_PW="${admin_pw}"
 DB_NAME="${wordpress_db}"
 WORDPRESS_USER="${wordpress_user}"
 WORDPRESS_USER_PW="${wordpress_user_pw}"
+WP_CONFIG_PATH="/srv/www/wordpress/wp-config.php"
 
 apt update -y
 apt install -y apache2 \
@@ -50,6 +51,9 @@ echo "$APACHE_CONFIG_CONTENT" > /etc/apache2/sites-available/wordpress.conf
 # Enable the WordPress site
 a2ensite wordpress.conf
 
+# Enable URL rewriting with:
+a2enmod rewrite
+
 # Disable the default site (optional, if you want to disable it)
 a2dissite 000-default.conf
 
@@ -74,27 +78,31 @@ mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "GRANT SELECT,INSERT,UPDATE,
 mysql -h $RDS_ADDRESS -u $ADMIN_USER -p$ADMIN_PW -e "FLUSH PRIVILEGES;"
 
 # CONFIGURE WORDPRESS TO CONNECT TO THE DATABASE
-# Copy the WordPress configuration file as www-data
-sudo -u www-data cp /srv/www/wordpress/wp-config-sample.php /srv/www/wordpress/wp-config.php
+sudo -u www-data cp /srv/www/wordpress/wp-config-sample.php $WP_CONFIG_PATH
 
 # Set the database credentials
-sudo -u www-data sed -i "s/database_name_here/$DB_NAME/" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "s/username_here/$WORDPRESS_USER/" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "s/password_here/$WORDPRESS_USER_PW/" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "s/localhost/$RDS_ADDRESS/" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "s/database_name_here/$DB_NAME/" $WP_CONFIG_PATH
+sudo -u www-data sed -i "s/username_here/$WORDPRESS_USER/" $WP_CONFIG_PATH
+sudo -u www-data sed -i "s/password_here/$WORDPRESS_USER_PW/" $WP_CONFIG_PATH
+sudo -u www-data sed -i "s/localhost/$RDS_ADDRESS/" $WP_CONFIG_PATH
 
 # Fetch the unique keys and salts
 UNIQUE_KEYS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
 
 # Insert the unique keys and salts into the wp-config.php file
-sudo -u www-data sed -i "/AUTH_KEY/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/SECURE_AUTH_KEY/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/LOGGED_IN_KEY/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/NONCE_KEY/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/AUTH_SALT/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/SECURE_AUTH_SALT/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/LOGGED_IN_SALT/d" /srv/www/wordpress/wp-config.php
-sudo -u www-data sed -i "/NONCE_SALT/d" /srv/www/wordpress/wp-config.php
+sudo -u www-data sed -i "/AUTH_KEY/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/SECURE_AUTH_KEY/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/LOGGED_IN_KEY/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/NONCE_KEY/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/AUTH_SALT/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/SECURE_AUTH_SALT/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/LOGGED_IN_SALT/d" $WP_CONFIG_PATH
+sudo -u www-data sed -i "/NONCE_SALT/d" $WP_CONFIG_PATH
 
-echo "$UNIQUE_KEYS" | sudo -u www-data tee -a /srv/www/wordpress/wp-config.php > /dev/null
+echo "$UNIQUE_KEYS" > /tmp/unique_keys.txt
+sudo -u www-data sed -i "/\/\*\*#@-\*\//r /tmp/unique_keys.txt" $WP_CONFIG_PATH
+rm /tmp/unique_keys.txt
 
+# Forward info about the HTTPS request to the ELB to wordpress
+ENABLE_HTTPS="if (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https') {\n    \$_SERVER['HTTPS'] = 'on';\n}\n"
+sed -i "1a $ENABLE_HTTPS" $WP_CONFIG_PATH
