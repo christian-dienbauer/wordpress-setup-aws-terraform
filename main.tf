@@ -13,7 +13,7 @@ provider "aws" {
 
 # Setup VPC and subnets
 
-resource "aws_vpc" "wordpress-cd" {
+resource "aws_vpc" "wordpress_cd" {
   cidr_block       = "10.0.0.0/16"
   instance_tenancy = "default"
 
@@ -25,8 +25,8 @@ resource "aws_vpc" "wordpress-cd" {
   }
 }
 
-resource "aws_subnet" "wordpress-cd-a" {
-  vpc_id                  = aws_vpc.wordpress-cd.id
+resource "aws_subnet" "wordpress_cd_a" {
+  vpc_id                  = aws_vpc.wordpress_cd.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "eu-central-1a"
   map_public_ip_on_launch = true
@@ -36,8 +36,8 @@ resource "aws_subnet" "wordpress-cd-a" {
   }
 }
 
-resource "aws_subnet" "wordpress-cd-b" {
-  vpc_id                  = aws_vpc.wordpress-cd.id
+resource "aws_subnet" "wordpress_cd_b" {
+  vpc_id                  = aws_vpc.wordpress_cd.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = "eu-central-1b"
   map_public_ip_on_launch = true
@@ -47,8 +47,8 @@ resource "aws_subnet" "wordpress-cd-b" {
   }
 }
 
-resource "aws_subnet" "wordpress-cd-c" {
-  vpc_id                  = aws_vpc.wordpress-cd.id
+resource "aws_subnet" "wordpress_cd_c" {
+  vpc_id                  = aws_vpc.wordpress_cd.id
   cidr_block              = "10.0.3.0/24"
   availability_zone       = "eu-central-1c"
   map_public_ip_on_launch = true
@@ -60,15 +60,15 @@ resource "aws_subnet" "wordpress-cd-c" {
 
 
 resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.wordpress-cd.id
+  vpc_id = aws_vpc.wordpress_cd.id
 
   tags = {
     Name = var.tag
   }
 }
 
-resource "aws_route_table" "wordpress-cd" {
-  vpc_id = aws_vpc.wordpress-cd.id
+resource "aws_route_table" "wordpress_cd" {
+  vpc_id = aws_vpc.wordpress_cd.id
 
   route {
     cidr_block = "0.0.0.0/0"
@@ -81,22 +81,22 @@ resource "aws_route_table" "wordpress-cd" {
 }
 
 resource "aws_route_table_association" "public-a" {
-  subnet_id      = aws_subnet.wordpress-cd-a.id
-  route_table_id = aws_route_table.wordpress-cd.id
+  subnet_id      = aws_subnet.wordpress_cd_a.id
+  route_table_id = aws_route_table.wordpress_cd.id
 }
 
 resource "aws_route_table_association" "public-b" {
-  subnet_id      = aws_subnet.wordpress-cd-b.id
-  route_table_id = aws_route_table.wordpress-cd.id
+  subnet_id      = aws_subnet.wordpress_cd_b.id
+  route_table_id = aws_route_table.wordpress_cd.id
 }
 
 resource "aws_route_table_association" "public-c" {
-  subnet_id      = aws_subnet.wordpress-cd-c.id
-  route_table_id = aws_route_table.wordpress-cd.id
+  subnet_id      = aws_subnet.wordpress_cd_c.id
+  route_table_id = aws_route_table.wordpress_cd.id
 }
 
 resource "aws_security_group" "allow_http" {
-  vpc_id = aws_vpc.wordpress-cd.id
+  vpc_id = aws_vpc.wordpress_cd.id
 
   ingress {
     from_port   = 80
@@ -134,7 +134,7 @@ resource "aws_security_group" "allow_http" {
 # Create an RDS instance
 
 resource "aws_security_group" "rds_sg" {
-  vpc_id = aws_vpc.wordpress-cd.id
+  vpc_id = aws_vpc.wordpress_cd.id
 
   ingress {
     from_port   = 3306
@@ -155,14 +155,14 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-resource "aws_db_instance" "wordpress-cd" {
+resource "aws_db_instance" "wordpress_cd" {
   allocated_storage      = 20
   engine                 = "mysql"
   engine_version         = "8.0"
   instance_class         = "db.t3.micro"
   username               = var.db_admin
   password               = var.db_admin_pw # Consider using AWS Secrets Manager instead
-  db_subnet_group_name   = aws_db_subnet_group.wordpress-cd.name
+  db_subnet_group_name   = aws_db_subnet_group.wordpress_cd.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
 
@@ -173,19 +173,19 @@ resource "aws_db_instance" "wordpress-cd" {
   }
 }
 
-resource "aws_db_subnet_group" "wordpress-cd" {
+resource "aws_db_subnet_group" "wordpress_cd" {
   name       = "main-subnet-group"
-  subnet_ids = [aws_subnet.wordpress-cd-a.id, aws_subnet.wordpress-cd-b.id, aws_subnet.wordpress-cd-c.id]
+  subnet_ids = [aws_subnet.wordpress_cd_a.id, aws_subnet.wordpress_cd_b.id, aws_subnet.wordpress_cd_c.id]
 
   tags = {
     Name = "main-subnet-group"
   }
 }
 
-# Create database and user for wordpress
+# Setup Wordpress and create an AMI
 
 resource "aws_security_group" "wordpress_setup" { # Remove me
-  vpc_id = aws_vpc.wordpress-cd.id
+  vpc_id = aws_vpc.wordpress_cd.id
 
   ingress {
     from_port   = 22
@@ -216,13 +216,13 @@ resource "aws_security_group" "wordpress_setup" { # Remove me
 resource "aws_instance" "wordpress_setup" { # TODO: terminate after database setup
   ami                    = var.image_id
   instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.wordpress-cd-c.id
+  subnet_id              = aws_subnet.wordpress_cd_c.id
   key_name               = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
   vpc_security_group_ids = [aws_security_group.wordpress_setup.id]
 
   user_data = templatefile("wordpress_setup.tftpl",
     {
-      rds_address       = aws_db_instance.wordpress-cd.address,
+      rds_address       = aws_db_instance.wordpress_cd.address,
       admin             = var.db_admin,
       admin_pw          = var.db_admin_pw,
       wordpress_db      = var.db_wordpress,
@@ -253,7 +253,18 @@ resource "aws_ami_from_instance" "wordpress_ami" {
   ]
 }
 
-# Setup ec2 instance behind a load balancer
+resource "null_resource" "terminate_wordpress_setup" {
+  depends_on = [aws_ami_from_instance.wordpress_ami]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      aws ec2 terminate-instances --instance-ids ${aws_instance.wordpress_setup.id} --region ${var.region}
+      aws ec2 wait instance-terminated --instance-ids ${aws_instance.wordpress_setup.id} --region ${var.region}
+    EOT
+  }
+}
+
+# Run Wordpress in an autoscaling group behind a load balancer
 
 # # REMOVE - Development only. 
 resource "awscc_ec2_key_pair" "cdpubkey" {
@@ -262,7 +273,7 @@ resource "awscc_ec2_key_pair" "cdpubkey" {
   public_key_material = file("~/.ssh/id_ed25519.pub")
 }
 
-resource "aws_launch_template" "wordpress-cd" {
+resource "aws_launch_template" "wordpress_cd" {
   name_prefix   = "wordpress-cd-"
   image_id      = aws_ami_from_instance.wordpress_ami.id
   instance_type = var.instance_type
@@ -278,13 +289,13 @@ resource "aws_launch_template" "wordpress-cd" {
   }
 }
 
-resource "aws_autoscaling_group" "wordpress-cd" {
+resource "aws_autoscaling_group" "wordpress_cd" {
   desired_capacity    = 1
   max_size            = 1
   min_size            = 1
-  vpc_zone_identifier = [aws_subnet.wordpress-cd-a.id, aws_subnet.wordpress-cd-b.id, aws_subnet.wordpress-cd-c.id]
+  vpc_zone_identifier = [aws_subnet.wordpress_cd_a.id, aws_subnet.wordpress_cd_b.id, aws_subnet.wordpress_cd_c.id]
   launch_template {
-    id      = aws_launch_template.wordpress-cd.id
+    id      = aws_launch_template.wordpress_cd.id
     version = "$Latest"
   }
 
@@ -295,25 +306,23 @@ resource "aws_autoscaling_group" "wordpress-cd" {
   }
 }
 
-resource "aws_lb" "wordpress-cd" {
+resource "aws_lb" "wordpress_cd" {
   name               = "wordpress-cd-lb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.allow_http.id]
-  subnets            = [aws_subnet.wordpress-cd-a.id, aws_subnet.wordpress-cd-b.id, aws_subnet.wordpress-cd-c.id]
-
-  enable_deletion_protection = false
+  subnets            = [aws_subnet.wordpress_cd_a.id, aws_subnet.wordpress_cd_b.id, aws_subnet.wordpress_cd_c.id]
 
   tags = {
     Name = var.tag
   }
 }
 
-resource "aws_lb_target_group" "wordpress-cd" {
+resource "aws_lb_target_group" "wordpress_cd" {
   name        = "wordpress-cd-tg"
   port        = 80
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.wordpress-cd.id
+  vpc_id      = aws_vpc.wordpress_cd.id
   target_type = "instance"
 
   health_check {
@@ -333,7 +342,7 @@ resource "aws_lb_target_group" "wordpress-cd" {
 
 # Define a listener for HTTPS
 resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.wordpress-cd.arn
+  load_balancer_arn = aws_lb.wordpress_cd.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-2016-08"
@@ -341,14 +350,12 @@ resource "aws_lb_listener" "https" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.wordpress-cd.arn
+    target_group_arn = aws_lb_target_group.wordpress_cd.arn
   }
 }
 
 
 resource "aws_autoscaling_attachment" "asg_attachment" {
-  autoscaling_group_name = aws_autoscaling_group.wordpress-cd.name
-  lb_target_group_arn    = aws_lb_target_group.wordpress-cd.arn
+  autoscaling_group_name = aws_autoscaling_group.wordpress_cd.name
+  lb_target_group_arn    = aws_lb_target_group.wordpress_cd.arn
 }
-
-# TODO: change wordpress-cd to wordpress_cd
