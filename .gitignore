@@ -1,0 +1,51 @@
+# Ignore Terraform files
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*
+*.tfvars
+*.tfvars.json
+.override.tf
+.override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform/
+.terraform.lock.hcl
+
+# Ignore sensitive information files
+*.pem
+*.key
+*.env
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Visual Studio Code settings
+.vscode/
+.history/
+
+# Ignore log files
+*.log
+
+# Ignore backup and temporary files
+*~
+*.bak
+*.swp
+*.tmp
+
+# Ignore compiled binaries
+*.exe
+*.out
+*.dll
+*.so
+
+# Ignore Terraform plan files
+*.tfplan
+
+# Ignore .terraform directories and files (old Terraform versions)
+terraform.tfstate.d/
+*.tfstate.backup
+*.tfvars.backup
+
+# Ignore local terraform configuration
+terraform.rc
