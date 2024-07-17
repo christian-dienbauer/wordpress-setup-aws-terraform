@@ -37,6 +37,8 @@ An EC2 instance to set up WordPress and create an Amazon Machine Image (AMI) fro
 
 ![Activities in Setup Instance](images/setup-instance-activities.png)
 
+The exact steps to reproduce the setup can be found in the [wordpress_setup.tftpl](wordpress_setup.tftpl) file.
+
 ### Load Balancer and Auto Scaling
 
 An Application Load Balancer to distribute traffic to WordPress instances.

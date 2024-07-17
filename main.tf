@@ -169,16 +169,86 @@ resource "aws_db_instance" "wordpress_cd" {
   publicly_accessible = true
 
   tags = {
-    Name = "main-rds"
+    Name = "wordpress-cd-rds"
   }
 }
 
 resource "aws_db_subnet_group" "wordpress_cd" {
-  name       = "main-subnet-group"
+  name       = "wordpress-cd-subnet-group"
   subnet_ids = [aws_subnet.wordpress_cd_a.id, aws_subnet.wordpress_cd_b.id, aws_subnet.wordpress_cd_c.id]
 
   tags = {
-    Name = "main-subnet-group"
+    Name = "wordpress-cd-subnet-group"
+  }
+}
+
+# AWS Backup setup for RDS
+resource "aws_backup_vault" "wordpress_cd_backup_vault" {
+  name = "wordpress-cd-backup-vault"
+
+  tags = {
+    Name = var.tag
+  }
+}
+
+resource "aws_backup_plan" "wordpress_cd_backup_plan" {
+  name = "wordpress-cd-backup-plan"
+
+  rule {
+    rule_name         = "daily-backup"
+    target_vault_name = aws_backup_vault.wordpress_cd_backup_vault.name
+    schedule          = "cron(0 5 * * ? *)"
+    lifecycle {
+      delete_after = 30
+    }
+  }
+
+  tags = {
+    Name = "wordpress-cd-backup-plan"
+  }
+}
+
+resource "aws_backup_selection" "rds_backup_selection" {
+  plan_id      = aws_backup_plan.wordpress_cd_backup_plan.id
+  name         = "wordpress-cd-backup-selection"
+  iam_role_arn = aws_iam_role.backup_role.arn
+  resources    = [aws_db_instance.wordpress_cd.arn]
+
+}
+
+resource "aws_iam_role" "backup_role" {
+  name = "backup-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "backup.amazonaws.com"
+        }
+      },
+    ]
+  })
+
+  inline_policy {
+    name = "backup-policy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Action = [
+            "rds:DescribeDBInstances",
+            "rds:DescribeDBSnapshots",
+            "rds:CreateDBSnapshot",
+            "rds:DeleteDBSnapshot",
+          ]
+          Effect   = "Allow"
+          Resource = "*"
+        },
+      ]
+    })
   }
 }
 
@@ -239,7 +309,7 @@ resource "aws_instance" "wordpress_setup" { # TODO: terminate after database set
 
 resource "null_resource" "wordpress_ami_delay" {
   provisioner "local-exec" {
-    command = "sleep 60"
+    command = "sleep 120"
   }
 
   depends_on = [aws_instance.wordpress_setup]
