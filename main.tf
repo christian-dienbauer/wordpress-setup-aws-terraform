@@ -243,6 +243,7 @@ resource "aws_iam_role" "backup_role" {
             "rds:DescribeDBSnapshots",
             "rds:CreateDBSnapshot",
             "rds:DeleteDBSnapshot",
+            "rds:ListTagsForResource"
           ]
           Effect   = "Allow"
           Resource = "*"
