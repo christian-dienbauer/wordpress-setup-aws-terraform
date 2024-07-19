@@ -94,10 +94,12 @@ terraform apply
 ### Access Your WordPress Site
 
 Once the infrastructure is created, you can access your WordPress site using the DNS name of the load balancer that is provided via a Terraform output via https.
-<!-- 
-- OUTPUT of the Terraform Template that shows the dns of the load balancer 
-- Screenshot of the 
-- -->
+
+![terraform apply output](images/apply_output.png)
+
+Use the *load_balancer_dns* output and use the https protocoll to access the site
+
+![Wordpress installation guide](images/wordpress_install.png)
 
 ### Setup Custom Domain Name
 

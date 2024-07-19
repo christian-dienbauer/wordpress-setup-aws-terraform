@@ -166,8 +166,6 @@ resource "aws_db_instance" "wordpress_cd" {
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
 
-  publicly_accessible = true
-
   tags = {
     Name = "wordpress-cd-rds"
   }
@@ -255,22 +253,8 @@ resource "aws_iam_role" "backup_role" {
 
 # Setup Wordpress and create an AMI
 
-resource "aws_security_group" "wordpress_setup" { # Remove me
+resource "aws_security_group" "wordpress_setup" {
   vpc_id = aws_vpc.wordpress_cd.id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   egress {
     from_port   = 0
@@ -284,11 +268,10 @@ resource "aws_security_group" "wordpress_setup" { # Remove me
   }
 }
 
-resource "aws_instance" "wordpress_setup" { # TODO: terminate after database setup
+resource "aws_instance" "wordpress_setup" {
   ami                    = var.image_id
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.wordpress_cd_c.id
-  key_name               = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
   vpc_security_group_ids = [aws_security_group.wordpress_setup.id]
 
   user_data = templatefile("wordpress_setup.tftpl",
@@ -322,7 +305,11 @@ resource "aws_ami_from_instance" "wordpress_ami" {
   depends_on = [
     null_resource.wordpress_ami_delay
   ]
+  lifecycle {
+    ignore_changes = [source_instance_id]
+  }
 }
+
 
 resource "null_resource" "terminate_wordpress_setup" {
   depends_on = [aws_ami_from_instance.wordpress_ami]
@@ -337,18 +324,10 @@ resource "null_resource" "terminate_wordpress_setup" {
 
 # Run Wordpress in an autoscaling group behind a load balancer
 
-# # REMOVE - Development only. 
-resource "awscc_ec2_key_pair" "cdpubkey" {
-  key_name            = "christian.dienbauer@dreamcodefactory.com"
-  key_type            = "ed25519"
-  public_key_material = file("~/.ssh/id_ed25519.pub")
-}
-
 resource "aws_launch_template" "wordpress_cd" {
   name_prefix   = "wordpress-cd-"
   image_id      = aws_ami_from_instance.wordpress_ami.id
   instance_type = var.instance_type
-  key_name      = awscc_ec2_key_pair.cdpubkey.key_name # Remove me
 
   network_interfaces {
     associate_public_ip_address = true
