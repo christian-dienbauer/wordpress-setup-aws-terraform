@@ -269,6 +269,7 @@ resource "aws_security_group" "wordpress_setup" {
 }
 
 resource "aws_instance" "wordpress_setup" {
+  count                  = var.init_wordpress ? 1 : 0
   ami                    = var.image_id
   instance_type          = "t2.micro"
   subnet_id              = aws_subnet.wordpress_cd_c.id
@@ -300,8 +301,9 @@ resource "null_resource" "wordpress_ami_delay" {
 }
 
 resource "aws_ami_from_instance" "wordpress_ami" {
+  count              = 1
   name               = "wordpress-cd"
-  source_instance_id = aws_instance.wordpress_setup.id
+  source_instance_id = try(aws_instance.wordpress_setup[count.index].id, 0)
   depends_on = [
     null_resource.wordpress_ami_delay
   ]
@@ -312,12 +314,13 @@ resource "aws_ami_from_instance" "wordpress_ami" {
 
 
 resource "null_resource" "terminate_wordpress_setup" {
+  count      = var.init_wordpress ? 1 : 0
   depends_on = [aws_ami_from_instance.wordpress_ami]
 
   provisioner "local-exec" {
     command = <<EOT
-      aws ec2 terminate-instances --instance-ids ${aws_instance.wordpress_setup.id} --region ${var.region}
-      aws ec2 wait instance-terminated --instance-ids ${aws_instance.wordpress_setup.id} --region ${var.region}
+      aws ec2 terminate-instances --instance-ids ${aws_instance.wordpress_setup[count.index].id} --region ${var.region}
+      aws ec2 wait instance-terminated --instance-ids ${aws_instance.wordpress_setup[count.index].id} --region ${var.region}
     EOT
   }
 }
@@ -326,7 +329,7 @@ resource "null_resource" "terminate_wordpress_setup" {
 
 resource "aws_launch_template" "wordpress_cd" {
   name_prefix   = "wordpress-cd-"
-  image_id      = aws_ami_from_instance.wordpress_ami.id
+  image_id      = aws_ami_from_instance.wordpress_ami[0].id
   instance_type = var.instance_type
 
   network_interfaces {

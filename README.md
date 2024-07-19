@@ -77,7 +77,15 @@ Have a look at the [variables.tf](variables.tf) file and change the variables ac
 
 ### Plan the Infrastructure
 
-Run the terraform plan command to see what resources will be created.
+Run the terraform plan command to see what resources will be created. The first time you execute the command, set it with *--var=init_wordpress=true* to install WordPress on an EC2 instance and create an AMI from it. If you need to change something on the infrastructure afterwards, use it without setting the varialbe.
+
+Initial setup:
+
+```bash
+terraform plan --var=init_wordpress=true
+```
+
+When planning to change the infrastructure
 
 ```bash
 terraform plan
@@ -85,7 +93,13 @@ terraform plan
 
 ### Apply the Configuration
 
-Apply the Terraform configuration to create the resources.
+Apply the Terraform configuration to create the resources for the first time:
+
+```bash
+terraform apply --var=init_wordpress=true
+```
+
+When applying changes on an existing infrastrucutre, there is no need to create a new wordpress AMI
 
 ```bash
 terraform apply

@@ -1,3 +1,9 @@
+variable "init_wordpress" {
+  description = "The wordpress instance should be executed the first time to create an AMI. If this should not be done again, set to false."
+  type        = bool
+  default     = false
+}
+
 variable "region" {
   default = "eu-central-1"
 }
